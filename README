@@ -1,0 +1,17 @@
+Code for collecting and correcting SEM images via external scan control
+
+contains source code for 2 programs and a cmake build script
+
+	-ExternalScan: collect a time resolved image via a Natiional Instruments DAQ
+		*requires the NIDAQmx library available from ni.com
+		*enable option 'Build_ScanController' in cmake to build
+		*run with no arguments to print help
+
+	-AlignFrames: post processing for images collected by ExternalScan
+		*computes the following for each image in the current working directory:
+			-shifts
+			-least squares gompertz fit
+			-shift corrected frames
+			-integration of shift corrected frames
+		*example input / output data plus a script to plot the results is proveded in /example_data
+

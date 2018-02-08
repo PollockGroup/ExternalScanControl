@@ -1,31 +1,79 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *                                                             *
- * ExternalScan.h                                              *
- *                                                             *
- * Created by: William C. Lenthe,                              *
- * Copyright (c) 2016 University of California, Santa Barbara  *
- * All Rights Reserved                                         *
- *                                                             *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                                                                                 *
+ * Copyright (c) 2017, Reagents of the University of California                    *
+ * All rights reserved.                                                            *
+ * Author William C. Lenthe                                                        *
+ *                                                                                 *
+ * Redistribution and use in source and binary forms, with or without              *
+ * modification, are permitted provided that the following conditions are met:     *
+ *                                                                                 *
+ * 1. Redistributions of source code must retain the above copyright notice, this  *
+ *    list of conditions and the following disclaimer.                             *
+ *                                                                                 *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,    *
+ *    this list of conditions and the following disclaimer in the documentation    *
+ *    and/or other materials provided with the distribution.                       *
+ *                                                                                 *
+ * 3. Neither the name of the copyright holder nor the names of its                *
+ *    contributors may be used to endorse or promote products derived from         *
+ *    this software without specific prior written permission.                     *
+ *                                                                                 *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *
+ *                                                                                 *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 #ifndef _ExternalScan_H_
 #define _ExternalScan_H_
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                                                                                 *
+ *     ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !     *
+ *     !                                                                     !     *
+ *     !      HARD CODED VALUES TO LIMIT SCAN PARAMETERS TO SAFE RANGES      !     *
+ *     !                                                                     !     *
+ *     ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !     *
+ *                                                                                 *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+//these values will be microscope dependent and incorrect settings may damage the column
+//values outside of range will cause an exception
+
+//limit on amplitude of voltage from daq -> microscope (+/-MaxVoltage)
+//microscopes with an external scan controller should have a spec for the max voltage
+static const double MaxVoltage = 4.0;
+
+//limit on time to traverse entire scan range (> MinUsTraverse)
+//minimum traversal time can be bounded by selecting the lowest resolution, shortest dwell time, lowest magnification condition allowable:
+//e.g. imaging at 768x512 at lowest mag a microscope with a minimum allowable dwell time of 300 ns -> 230.4 minimum traversal
+static const double MinUsTraverse = 768.0;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                                                                                 *
+ *     ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !     *
+ *     !                                                                     !     *
+ *     !      HARD CODED VALUES TO LIMIT SCAN PARAMETERS TO SAFE RANGES      !     *
+ *     !                                                                     !     *
+ *     ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !     *
+ *                                                                                 *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include <string>
 #include <vector>
 #include <numeric>
 #include <algorithm>
 #include <stdexcept>
+#include <thread>
 #include <ctime>
 
 #include "tif.hpp"
-
-#ifndef NOMINMAX
-	#define NOMINMAX//windows min/max definitions conflict with std
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-	#define WIN32_LEAN_AND_MEAN//limit extra windows includes
-#endif
-#include <windows.h>
 #include "NIDAQmx.h"
 
 class ExternalScan {
@@ -61,6 +109,9 @@ class ExternalScan {
 		int32 readRow();
 
 	public:
+		//@brief: callback function for NI controller (called when data is ready to be read from buffer), signature specified by daqmx
+		//@param callbackData: custom void pointer (pointer to ExternalScan object)
+		//@return: error code for nidaqmx
 		static int32 CVICALLBACK EveryNCallback(TaskHandle taskHandle, int32 everyNsamplesEventType, uInt32 nSamples, void *callbackData) {return reinterpret_cast<ExternalScan*>(callbackData)->readRow();}
 
 		ExternalScan(std::string x, std::string y, std::string e, uInt64 s, float64 a, uInt64 w, uInt64 h, bool sn) : xPath(x), yPath(y), etdPath(e), samples(s), vRange(a), width(w), height(h), snake(sn) {configureScan();}
@@ -70,6 +121,9 @@ class ExternalScan {
 		void execute(std::string fileName);
 };
 
+//@brief wrapper to convert from return codes to exceptions
+//@param error: daqmx return code to check
+//@param message: call detail to include in exception
 void ExternalScan::DAQmxTry(int32 error, std::string message) {
 	if(0 != error) {
 		//get error message
@@ -94,6 +148,8 @@ void ExternalScan::DAQmxTry(int32 error, std::string message) {
 	}
 }
 
+//@brief: create x/y coordinates for beam scan
+//@return: scan coordinates as all x points followed by all y points (not interleaved)
 std::vector<float64> ExternalScan::generateScanData() const {
 	//generate uniformly spaced square grid of points from -vRange -> vRange in largest direction
 	std::vector<float64> xData((size_t)width), yData((size_t)height);
@@ -130,6 +186,7 @@ std::vector<float64> ExternalScan::generateScanData() const {
 	return scan;
 }
 
+//@brief: create beam scan path and write to daq buffer
 void ExternalScan::configureScan() {
 	//create tasks and channels
 	clearScan();//clear existing scan if needed
@@ -138,13 +195,15 @@ void ExternalScan::configureScan() {
 	DAQmxTry(DAQmxCreateAOVoltageChan(hOutput, (xPath + "," + yPath).c_str(), "", -vRange, vRange, DAQmx_Val_Volts, NULL), "creating output channel");
 	DAQmxTry(DAQmxCreateAIVoltageChan(hInput, etdPath.c_str(), "", DAQmx_Val_Cfg_Default, -10.0, 10.0, DAQmx_Val_Volts, NULL), "creating input channel");
 
-	//get the maximum anolog input rate supported by the daq
+	//get the maximum analog input rate supported by the daq
 	DAQmxTry(DAQmxGetSampClkMaxRate(hInput, &sampleRate), "getting device maximum input frequency");
 	const float64 effectiveDwell = (1000000.0 * samples) / sampleRate;
 
-	//check scan rate, the microscope is limited to a 300 ns dwell at 768 x 512
-	//3.33 x factor of safety -> require at least 768 us to cover full -4 -> +4 V scan
-	const float64 minDwell = (768.0 / width) * (4.0 / vRange);//minimum dwell time in us
+	//make sure the voltage isn't too large
+	if(vRange > MaxVoltage) throw std::runtime_error("(scan amplitude is too large - passed " + std::to_string(vRange) + ", max " + std::to_string(MaxVoltage) + ")");
+
+	//require at least MinUsTraverse us to cover full scan range
+	const float64 minDwell = (MinUsTraverse / width) * (MaxVoltage / vRange);//minimum dwell time in us
 	if(effectiveDwell < minDwell) throw std::runtime_error("Dwell time too short - dwell must be at least " + std::to_string(minDwell) + " us for " + std::to_string(width) + " pixel scan lines");
 
 	//configure timing
@@ -173,6 +232,7 @@ void ExternalScan::configureScan() {
 	frameImages.assign((size_t)samples, std::vector<int16>((size_t)width * height));//hold each frame as one block of memory
 }
 
+//@brief: clear daq scan tasks
 void ExternalScan::clearScan() {
 	if(NULL != hInput) {
 		DAQmxStopTask(hInput);
@@ -186,6 +246,8 @@ void ExternalScan::clearScan() {
 	}
 }
 
+//@brief: read a single row of detector data from the device buffer
+//@return: error code for daqmx library
 int32 ExternalScan::readRow() {
 	int32 read;
 	DAQmxTry(DAQmxReadBinaryI16(hInput, (int32)buffer.size(), DAQmx_Val_WaitInfinitely, DAQmx_Val_GroupByChannel, buffer.data(), (uInt32)buffer.size(), &read, NULL), "reading data from buffer");
@@ -209,26 +271,8 @@ int32 ExternalScan::readRow() {
 	return 0;
 }
 
-/*
-template <typename T>
-std::vector<std::uint8_t> to8Bit(const std::vector<T>& image) {
-	//build histogram bins
-	T bins[256];
-	std::iota(bins, bins+256, 1);//fill bins with 1, 2, 3, ..., 256
-	auto minMax = std::minmax_element(image.cbegin(), image.cend());
-	const T vMin = *minMax.first;
-	const T vMax = *minMax.second;
-	const double binWidth = double(vMax - vMin) / 256;
-	std::transform(bins, bins+256, bins, [binWidth, vMin](const T& v){return (T)std::round(binWidth * v) + vMin;});
-	bins[255] = vMax;//rounding error can cause brightest pixel to be black
-
-	//compute histogram bin for each pixel
-	std::vector<std::uint8_t> pixelBins(image.size());
-	for(size_t i = 0; i < image.size(); i++) pixelBins[i] = std::distance(bins, std::lower_bound(bins, bins+256, image[i]));
-	return pixelBins;
-}
-*/
-
+//@brief: execute the configured scan (collect an image)
+//@param: filename of tif file to write (each tif slice is the same sample for each pixel)
 void ExternalScan::execute(std::string fileName) {
 	//execute scan
 	jRow = 0;
@@ -239,19 +283,12 @@ void ExternalScan::execute(std::string fileName) {
 	float64 scanTime = float64(width * height * samples) / sampleRate + 5.0;//allow an extra 5s
 	std::cout << "imaging (expected duration ~" << scanTime - 5.0 << "s)\n";
 	DAQmxTry(DAQmxWaitUntilTaskDone(hOutput, scanTime), "waiting for output task");
-	Sleep((DWORD)(1 + (1000 * samples) / sampleRate));//give the input task enough time to be sure that it is finished
+	std::this_thread::sleep_for(std::chrono::milliseconds(1 + 1000 * int(double(samples) / sampleRate)));//give the input task enough time to be sure that it is finished
 	DAQmxTry(DAQmxStopTask(hInput), "stopping input task");
 	std::cout << '\n';
 
 	//write image to file
 	Tif::Write(frameImages, (uInt32)width, (uInt32)height, fileName);
-
-	//to do real time alignment
-	/*
-	std::vector<float> shifts;
-	std::vector<float> avgFrame = correlateRows<float, int16>(frames, (int)height, (int)width, shifts, 5.0f, 16, &snake);
-	Tif::Write(to8Bit(avgFrame), width, height, fileName + "_avg.tif");
-	*/
 }
 
 #endif
