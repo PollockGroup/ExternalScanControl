@@ -1,5 +1,7 @@
 Code for collecting and correcting SEM images via external scan control
 
+If you use this software please consider citing the accompanying paper: https://doi.org/10.1016/j.ultramic.2018.08.025
+
 contains source code for 2 programs and a cmake build script
 
 	-ExternalScan: collect a time resolved image via a Natiional Instruments DAQ
@@ -13,5 +15,5 @@ contains source code for 2 programs and a cmake build script
 			-least squares gompertz fit
 			-shift corrected frames
 			-integration of shift corrected frames
-		*example input / output data plus a script to plot the results is proveded in /example_data
+		*example input / output data plus a script to plot the results is provided in /example_data
 
